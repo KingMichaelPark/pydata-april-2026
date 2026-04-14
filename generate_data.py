@@ -54,7 +54,9 @@ def generate_records(count: int = 1000):
     return records
 
 
-def save_and_time(fmt: str, data: list, output_dir: Path, index: int = 1) -> float:
+def save_and_time(
+    fmt: str, data: list, output_dir: Path, index: int = 1
+) -> tuple[float, int]:
     file_path = output_dir / f"housing_test_{index}.{fmt}"
 
     start_time = time.perf_counter()
@@ -86,7 +88,8 @@ def save_and_time(fmt: str, data: list, output_dir: Path, index: int = 1) -> flo
             fastavro.writer(f, HOUSING_AVRO_SCHEMA, data)
 
     end_time = time.perf_counter()
-    return end_time - start_time
+    file_size = file_path.stat().st_size
+    return end_time - start_time, file_size
 
 
 def main():
@@ -97,13 +100,19 @@ def main():
     )
     parser.add_argument("--all", action="store_true", help="Generate all formats")
     parser.add_argument(
-        "--num-files", type=int, default=1, help="Number of files to generate per format"
+        "--num-files",
+        type=int,
+        default=1,
+        help="Number of files to generate per format",
     )
     parser.add_argument(
         "--num-records",
         type=int,
         default=1000,
         help="Number of records to generate per file",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Show file size information"
     )
     parser.add_argument(
         "formats", nargs="*", help=f"Individual formats: {', '.join(supported)}"
@@ -120,7 +129,7 @@ def main():
     output_path = Path("data")
     output_path.mkdir(parents=True, exist_ok=True)
 
-    results = {fmt: [] for fmt in valid_formats}
+    results = {fmt: {"durations": [], "sizes": []} for fmt in valid_formats}
 
     for i in range(1, args.num_files + 1):
         print(
@@ -129,20 +138,41 @@ def main():
         records = generate_records(args.num_records)
 
         for fmt in valid_formats:
-            duration = save_and_time(fmt, records, output_path, index=i)
-            results[fmt].append(duration)
+            duration, file_size = save_and_time(fmt, records, output_path, index=i)
+            results[fmt]["durations"].append(duration)
+            results[fmt]["sizes"].append(file_size)
             print(f"Finished {fmt}...")
 
-    print("\n" + "=" * 45)
-    print(f"{'Format':<10} | {'Avg Time (s)':<15} | {'Total Time (s)':<15}")
-    print("-" * 45)
-    for fmt, durations in results.items():
-        avg_time = sum(durations) / len(durations)
-        total_time = sum(durations)
-        print(f"{fmt:<10} | {avg_time:<15.6f} | {total_time:<15.6f}")
-    print("=" * 45)
+    # Calculate statistics and sort by total time
+    stats = []
+    for fmt, data in results.items():
+        total_time = sum(data["durations"])
+        avg_time = total_time / len(data["durations"])
+        avg_size = sum(data["sizes"]) / len(data["sizes"])
+        stats.append(
+            {
+                "fmt": fmt,
+                "total_time": total_time,
+                "avg_time": avg_time,
+                "avg_size": avg_size,
+            }
+        )
+
+    stats.sort(key=lambda x: x["total_time"])
+
+    print("\n" + "=" * 65)
+    header = f"{'Format':<10} | {'Avg Time (s)':<15} | {'Total Time (s)':<15}"
+    if args.verbose:
+        header += f" | {'Avg Size (KB)':<15}"
+    print(header)
+    print("-" * 65)
+    for s in stats:
+        row = f"{s['fmt']:<10} | {s['avg_time']:<15.6f} | {s['total_time']:<15.6f}"
+        if args.verbose:
+            row += f" | {s['avg_size'] / 1024:<15.2f}"
+        print(row)
+    print("=" * 65)
 
 
 if __name__ == "__main__":
     main()
-
