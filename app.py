@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import time
 from datetime import datetime
 from typing import Generator
 
@@ -91,23 +92,24 @@ def get_housing(
     return list(db_session.scalars(stmt))
 
 
-@post(path="/housing", sync_to_thread=True)
+@post(path="/housing", sync_to_thread=True, media_type="text/html")
 def add_housing(
     db_session: Session,
     data: bytes,  # Receive raw bytes to handle different encodings
     file_type: str,
     insert_mode: str,
-) -> list[HousingData]:
+) -> str:
     """
     Parses data based on file_type and inserts via ORM or Core.
     """
 
+    start_deserialization = time.perf_counter()
     # 1. Handle File Parsing with Case Match
     try:
         match file_type.lower():
             case "json":
                 parsed_data = json.loads(data)
-            case "orson":
+            case "orjson":
                 parsed_data = orjson.loads(data)
             case "ujson":
                 parsed_data = ujson.loads(data)
@@ -148,10 +150,14 @@ def add_housing(
     except Exception as e:
         raise ClientException(f"Failed to parse {file_type}: {str(e)}")
 
+    end_deserialization = time.perf_counter()
+    deserialization_time = end_deserialization - start_deserialization
+
     # Ensure we are dealing with a list of dicts
     if isinstance(parsed_data, dict):
         parsed_data = [parsed_data]
 
+    start_insertion = time.perf_counter()
     # 2. Handle Insert Mode with Case Match
     match insert_mode.lower():
         case "orm":
@@ -169,9 +175,21 @@ def add_housing(
             raise ClientException(f"Invalid insert_mode: {insert_mode}")
 
     db_session.commit()
+    end_insertion = time.perf_counter()
+    insertion_time = end_insertion - start_insertion
 
-    # 3. Return the updated list
-    return list(db_session.scalars(select(HousingData)).all())
+    # 3. Return HTML table with metrics
+    html = f"""
+    <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>File Type</td><td>{file_type}</td></tr>
+        <tr><td>Insert Mode</td><td>{insert_mode}</td></tr>
+        <tr><td>Records Count</td><td>{len(parsed_data)}</td></tr>
+        <tr><td>Deserialization Time (s)</td><td>{deserialization_time:.6f}</td></tr>
+        <tr><td>Insertion Time (s)</td><td>{insertion_time:.6f}</td></tr>
+    </table>
+    """
+    return html
 
 
 app = Litestar(
