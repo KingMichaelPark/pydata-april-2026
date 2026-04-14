@@ -54,8 +54,8 @@ def generate_records(count: int = 1000):
     return records
 
 
-def save_and_time(fmt: str, data: list, output_dir: Path) -> float:
-    file_path = output_dir / f"housing_test.{fmt}"
+def save_and_time(fmt: str, data: list, output_dir: Path, index: int = 1) -> float:
+    file_path = output_dir / f"housing_test_{index}.{fmt}"
 
     start_time = time.perf_counter()
 
@@ -97,6 +97,9 @@ def main():
     )
     parser.add_argument("--all", action="store_true", help="Generate all formats")
     parser.add_argument(
+        "--num-files", type=int, default=1, help="Number of files to generate per format"
+    )
+    parser.add_argument(
         "formats", nargs="*", help=f"Individual formats: {', '.join(supported)}"
     )
 
@@ -108,25 +111,28 @@ def main():
         print(f"No valid formats selected. Use --all or one of: {supported}")
         return
 
-    print("Generating 1000 records...")
-    records = generate_records(1000)
-
     output_path = Path("data")
     output_path.mkdir(parents=True, exist_ok=True)
 
-    results = {}
+    results = {fmt: [] for fmt in valid_formats}
 
-    for fmt in valid_formats:
-        duration = save_and_time(fmt, records, output_path)
-        results[fmt] = duration
-        print(f"Finished {fmt}...")
+    for i in range(1, args.num_files + 1):
+        print(f"Iteration {i}/{args.num_files}: Generating 1000 records...")
+        records = generate_records(1000)
 
-    print("\n" + "=" * 30)
-    print(f"{'Format':<10} | {'Time (s)':<10}")
-    print("-" * 30)
-    for fmt, duration in results.items():
-        print(f"{fmt:<10} | {duration:.6f}")
-    print("=" * 30)
+        for fmt in valid_formats:
+            duration = save_and_time(fmt, records, output_path, index=i)
+            results[fmt].append(duration)
+            print(f"Finished {fmt}...")
+
+    print("\n" + "=" * 45)
+    print(f"{'Format':<10} | {'Avg Time (s)':<15} | {'Total Time (s)':<15}")
+    print("-" * 45)
+    for fmt, durations in results.items():
+        avg_time = sum(durations) / len(durations)
+        total_time = sum(durations)
+        print(f"{fmt:<10} | {avg_time:<15.6f} | {total_time:<15.6f}")
+    print("=" * 45)
 
 
 if __name__ == "__main__":

@@ -66,14 +66,14 @@ uv run alembic upgrade head
 Generate 1,000 mock housing records in various formats and see the time it takes to save them:
 
 ```bash
-# Generate all supported formats
-uv run generate_data.py --all
+# Generate all supported formats with multiple iterations
+uv run generate_data.py --all --num-files 5
 
 # Or generate specific formats
-uv run generate_data.py json csv avro
+uv run generate_data.py json csv avro --num-files 2
 ```
 
-_Generated files are saved in the `data/` directory._
+_Generated files are saved in the `data/` directory as `housing_test_{index}.{fmt}`._
 
 ### 🌐 Running the Web API
 
