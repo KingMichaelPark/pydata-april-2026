@@ -46,7 +46,7 @@ def generate_records(count: int = 1000):
                 "price": fake.random_int(min=100000, max=2000000),
                 "address": fake.address().replace("\n", ", "),
                 "city": fake.city(),
-                "year_built": fake.year() if fake.boolean() else None,
+                "year_built": int(fake.year()) if fake.boolean() else None,
                 "is_available": fake.boolean(),
                 "has_garage": fake.boolean(),
             }
@@ -100,6 +100,12 @@ def main():
         "--num-files", type=int, default=1, help="Number of files to generate per format"
     )
     parser.add_argument(
+        "--num-records",
+        type=int,
+        default=1000,
+        help="Number of records to generate per file",
+    )
+    parser.add_argument(
         "formats", nargs="*", help=f"Individual formats: {', '.join(supported)}"
     )
 
@@ -117,8 +123,10 @@ def main():
     results = {fmt: [] for fmt in valid_formats}
 
     for i in range(1, args.num_files + 1):
-        print(f"Iteration {i}/{args.num_files}: Generating 1000 records...")
-        records = generate_records(1000)
+        print(
+            f"Iteration {i}/{args.num_files}: Generating {args.num_records} records..."
+        )
+        records = generate_records(args.num_records)
 
         for fmt in valid_formats:
             duration = save_and_time(fmt, records, output_path, index=i)
