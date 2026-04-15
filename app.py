@@ -1,4 +1,7 @@
 from __future__ import annotations
+from litestar.params import Body
+from litestar.datastructures import UploadFile
+from litestar.enums import RequestEncodingType
 
 import csv
 import io
@@ -29,13 +32,13 @@ class Base(DeclarativeBase): ...
 
 class HousingData(Base):
     __tablename__ = "housing_data"
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     num_rooms: Mapped[int]
     num_bathrooms: Mapped[float]
     sq_feet: Mapped[int]
     aesthetic: Mapped[str]
     price: Mapped[int] = mapped_column(index=True)
-    address: Mapped[str] = mapped_column(unique=True)
+    address: Mapped[str] = mapped_column()
     city: Mapped[str] = mapped_column(index=True)
     year_built: Mapped[int | None]
     is_available: Mapped[bool] = mapped_column(default=True)
@@ -74,7 +77,7 @@ def get_favicon() -> None:
 
 
 @get(path="/housing", sync_to_thread=True)
-def get_housing(
+async def get_housing(
     db_session: Session, page: int = 1, limit: int = 10
 ) -> list[HousingData]:
     """
@@ -93,38 +96,48 @@ def get_housing(
 
 
 @post(path="/housing", sync_to_thread=True, media_type="text/html")
-def add_housing(
+async def add_housing(
     db_session: Session,
-    data: bytes,  # Receive raw bytes to handle different encodings
     file_type: str,
     insert_mode: str,
+    data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),
 ) -> str:
     """
     Parses data based on file_type and inserts via ORM or Core.
     """
 
     start_deserialization = time.perf_counter()
+    content = await data.read()
     # 1. Handle File Parsing with Case Match
     try:
         match file_type.lower():
             case "json":
-                parsed_data = json.loads(data)
+                parsed_data = json.loads(content)
             case "orjson":
-                parsed_data = orjson.loads(data)
+                parsed_data = orjson.loads(content)
             case "ujson":
-                parsed_data = ujson.loads(data)
+                parsed_data = ujson.loads(content)
             case "msgpack":
-                parsed_data = msgpack.unpackb(data)
+                parsed_data = msgpack.unpackb(content)
             case "csv":
-                stream = io.StringIO(data.decode("utf-8"))
-                parsed_data = list(csv.DictReader(stream))
+                stream = io.StringIO(content.decode("utf-8"))
+                parsed_data = []
+                for row in csv.DictReader(stream):
+                    if row.get("is_available") == "True":
+                        row["is_available"] = True
+                    elif row.get("is_available") == "False":
+                        row["is_available"] = False
+                    if row.get("has_garage") == "True":
+                        row["has_garage"] = True
+                    elif row.get("has_garage") == "False":
+                        row["has_garage"] = False
+                    parsed_data.append(row)
             case "avro":
                 # Requires fastavro
                 HOUSING_AVRO_SCHEMA = {
                     "type": "record",
                     "name": "HousingData",
                     "fields": [
-                        {"name": "id", "type": "int"},
                         {"name": "num_rooms", "type": "int"},
                         {"name": "num_bathrooms", "type": "float"},
                         {"name": "sq_feet", "type": "int"},
@@ -141,7 +154,7 @@ def add_housing(
                     ],
                 }
 
-                fo = io.BytesIO(data)
+                fo = io.BytesIO(content)
                 parsed_data = list(
                     fastavro.reader(fo, reader_schema=HOUSING_AVRO_SCHEMA)
                 )
@@ -180,14 +193,11 @@ def add_housing(
 
     # 3. Return HTML table with metrics
     html = f"""
-    <table>
-        <tr><th>Metric</th><th>Value</th></tr>
-        <tr><td>File Type</td><td>{file_type}</td></tr>
-        <tr><td>Insert Mode</td><td>{insert_mode}</td></tr>
-        <tr><td>Records Count</td><td>{len(parsed_data)}</td></tr>
-        <tr><td>Deserialization Time (s)</td><td>{deserialization_time:.6f}</td></tr>
-        <tr><td>Insertion Time (s)</td><td>{insertion_time:.6f}</td></tr>
-    </table>
+        File Type: {file_type}
+        Insert Mode: {insert_mode}
+        Records Count: {len(parsed_data)}
+        Deserialization Time (s): {deserialization_time:.6f}
+        Insertion Time (s): {insertion_time:.6f}
     """
     return html
 

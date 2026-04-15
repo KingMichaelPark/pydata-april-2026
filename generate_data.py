@@ -18,7 +18,6 @@ HOUSING_AVRO_SCHEMA = {
     "type": "record",
     "name": "HousingData",
     "fields": [
-        {"name": "id", "type": "int"},
         {"name": "num_rooms", "type": "int"},
         {"name": "num_bathrooms", "type": "float"},
         {"name": "sq_feet", "type": "int"},
@@ -35,10 +34,9 @@ HOUSING_AVRO_SCHEMA = {
 
 def generate_records(count: int = 1000):
     records = []
-    for i in range(1, count + 1):
+    for _ in range(1, count + 1):
         records.append(
             {
-                "id": i,
                 "num_rooms": fake.random_int(min=1, max=10),
                 "num_bathrooms": float(fake.random_int(min=1, max=5)),
                 "sq_feet": fake.random_int(min=500, max=5000),
