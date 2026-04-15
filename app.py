@@ -49,7 +49,7 @@ class HousingData(Base):
 
 engine = create_engine(
     "sqlite+pysqlite:///pydata.sqlite",
-    echo=True,  # Log all SQL commands to the console
+    echo=False,  # Log all SQL commands to the console
     connect_args={
         "check_same_thread": False
     },  # Allows multi-threaded use (standard for web apps)
@@ -204,6 +204,6 @@ async def add_housing(
 
 app = Litestar(
     route_handlers=[get_housing, add_housing, get_favicon],
-    debug=True,
+    debug=False,
     dependencies=database_dependencies,
 )
