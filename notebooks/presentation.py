@@ -7,8 +7,20 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
+    from pathlib import Path
+    import msgpack
+    import os
+    import json
+    import orjson
+    import snappy
+    import zstd
+    import fastavro  # Assuming fastavro is available for Avro handling
+    import time  # Import time for performance measurement
 
-    return (mo,)
+    import pandas as pd
+    import altair as alt
+
+    return Path, fastavro, mo, msgpack, orjson, snappy, time, zstd
 
 
 @app.cell(hide_code=True)
@@ -25,12 +37,69 @@ def _(mo):
     ### 🌐 JSON (JavaScript Object Notation)
     JSON is a text-based, language-independent format that uses human-readable key-value pairs. It is the de facto standard for modern APIs.
 
+    There are a couple variations that you may come across and in certain contexts.
+
+    Regular JSON
+    ```json
+    [
+        {"name": "Alice Johnson", "age": 28, "department": "Engineering"},
+        {"name": "Bob Smith", "age": 35, "department": "Marketing"},
+        {"name": "Carol White", "age": 42, "department": "Sales", "extra":
+            {
+                "nested": [
+                    {"types": "data"}
+                ]
+            }
+        }
+    ]
+    ```
+
+    JSON Lines (Mostly seen in events/logging)
+
+    ```jsonl
+    {"name": "Alice Johnson", "age": 28, "department": "Engineering"}
+    {"name": "Bob Smith", "age": 35, "department": "Marketing"}
+    {"name": "Carol White", "age": 42, "department": "Sales", "extra": {"nested": [{"types": "data"}]}}
+    ```
+
+    Choose JSON when:
+
+        * Building APIs that return structured responses
+        * Creating configuration files
+        * Working with nested, hierarchical data
+        * File size is manageable in memory
+        * You need a single, self-contained data structure
+
+    Choose JSONL when:
+
+        * Processing large datasets that don’t fit in memory
+        * Writing log files or event streams
+        * You need append-only operations
+        * Implementing data pipelines that benefit from streaming
+        * Fault tolerance is important (partial file recovery)
+
+    There is also [jsonc](https://jsonc.org/) an extension to json that is in proposal to allow for comments
+
+    ```jsonc
+    {
+        // This is a single-line comment
+        "name": "John Doe",
+        "age": 30 // This is another single line comment
+         /*
+          This is a block comment
+          that spans multiple lines
+        */
+    }
+    ```
+
     **✅ Pros:**
     * **Readability:** Extremely human-readable and intuitive.
     * **Universality:** Supported natively by almost every programming language and web service.
     * **Ease of Use:** Simple structure (object/array) makes parsing straightforward.
 
+
     **❌ Cons:**
+
     * **Verbosity/Overhead:** Since it is text-based, it includes many delimiters, quotation marks, and whitespace, leading to larger payload sizes compared to binary formats.
     * **Strict Typing:** It does not inherently enforce schema (though tools like JSON Schema help).
 
@@ -38,12 +107,21 @@ def _(mo):
     When human readability, simplicity, and maximum compatibility across various systems are the top priorities (e.g., public APIs, configuration files).
 
     ### 📄 CSV (Comma Separated Values)
+
     CSV is a plain text format that stores tabular data where each row is a data record, and fields are separated by a delimiter (usually a comma).
+
+    ```csv
+    ID,Status,IsActive,Cash
+    1,Complete,true,"10,000.12"
+    2,Pending,false,"12,000.39"
+    3,In_Progress,true,"1,003.12"
+    ```
 
     **✅ Pros:**
     * **Simplicity:** Extremely simple structure; nearly every spreadsheet program can read/write it.
     * **Compatibility:** Works well for simple, flat, homogeneous datasets (e.g., logs, basic data dumps).
     * **Compact (for simple data):** Can be very compact for uniformly structured data.
+    * **At least it's better than Excel docs!**
 
     **❌ Cons:**
     * **Data Loss of Structure:** It is inherently difficult to represent complex, nested, or hierarchical data (like JSON objects).
@@ -55,6 +133,8 @@ def _(mo):
 
     ### 📦 MsgPack (MessagePack)
     MsgPack is a binary serialization format. It aims to be faster and smaller than JSON by using binary representations for data types instead of text.
+
+    It is still fundamentally like JSON though, which means that the schema can be whatever and the receiver will have to unpack the fields and check the values just like you would need to with JSON.
 
     **✅ Pros:**
     * **Efficiency:** Significantly more compact and faster to serialize/deserialize than JSON because it eliminates textual overhead.
@@ -71,10 +151,81 @@ def _(mo):
     ### 🏛️ Avro (Apache Avro)
     Avro is a data serialization system that typically includes a robust schema definition language (JSON Schema) alongside the data. It is schema-based and highly optimized for handling complex, evolving data schemas.
 
+    You'll have something like a `user.avsc` file which will define the schema to pack the data in...
+
+    ```json
+    {
+      "type": "record",
+      "name": "User",
+      "namespace": "com.example",
+      "fields": [
+        {"name": "id", "type": "int"},
+        {"name": "username", "type": "string"},
+        {"name": "email", "type": "string"},
+        {"name": "is_premium", "type": "boolean", "default": false}
+      ]
+    }
+    ```
+
+    How a schema evolution works more generally...
+
+    1. On the Client (The Producer/Writer)
+
+    The client is responsible for "packaging" the data according to a specific version of the schema.
+
+        Step A: Schema Definition: The developer updates the schema (e.g., adding a field phone_number with a default value of null).
+
+        Step B: Registration: In many production environments (like Kafka), the client sends this new schema to a Schema Registry. The registry gives this schema a unique ID.
+
+        Step C: Serialization: The client converts the data into binary. It prepends the Schema ID to the front of the binary message.
+
+        Step D: Transmission: The client sends the small binary package (ID + Data) to the receiver or a message broker.
+
+
+    ```
+    ┌────────────────────┐
+    │ Dev Updated Schema │───┐
+    └─────────┬──────────┘   │
+              │              │
+              ▼              │
+     ┌────────────────┐  1. avro
+     │Schema Registry │    file
+     └────────────────┘      │
+              ▲              │
+         Get Schema          │
+              │ ┌─────────┐  │
+              └▶│ Server  │◀─┘
+                └─────────┘
+                     │
+                     ▼
+               ┌──────────┐
+               │Data      │
+               │Process / │
+               │Storage   │
+               └──────────┘
+    ```
+
+    The receiver’s job is to translate that binary back into something useful, even if the receiver is still using an older version of the code.
+
+        Step A: Identification: The receiver sees the Schema ID at the start of the message.
+
+        Step B: Fetching the Writer's Schema: If the receiver doesn't recognize that ID, it calls the Schema Registry to download the exact schema the client used.
+
+        Step C: The "Resolution" Phase: This is where the magic happens. The receiver compares its Local Schema (what its code expects) with the Writer Schema (what was actually sent).
+
+        Step D: Mapping: * New Field Added: If the writer sent a new field the reader doesn't know about, the reader simply ignores those extra bytes.
+
+            Field Removed: If the writer stopped sending a field the reader expects, the reader looks at its local schema and fills in the Default Value.
+
+        Step E: Deserialization: The data is converted into an object the receiver's application can understand.
+
+
     **✅ Pros:**
     * **Schema Evolution:** This is its biggest advantage. It handles schema changes (e.g., adding or removing fields) gracefully without breaking older consumers, making it perfect for long-lived APIs.
     * **Efficiency:** Highly efficient, schema-enforced binary serialization, often comparable to Protocol Buffers.
     * **Data Integrity:** The schema ensures that both the sender and receiver agree on how the data is structured, minimizing runtime errors.
+    * **Deserialisation:** Can be much faster because it doesn't need to parse strings, it can use direct memory mapping based on the schema
+
 
     **❌ Cons:**
     * **Complexity:** Requires strict schema definition and implementation, adding initial complexity compared to JSON.
@@ -83,14 +234,15 @@ def _(mo):
     **💡 When to use it:**
     When reliability, schema enforcement, and the ability to change data structure over time (schema evolution) without service disruption are critical (e.g., streaming data pipelines, Kafka topics).
 
+
+
     ---
 
     ## 🚀 Comparison Summary Table
 
     | Feature | JSON | CSV | MsgPack | Avro |
     | :--- | :---: | :---: | :---: | :---: |
-    | **Readability** | Excellent | Excellent | Very Poor | Poor (Needs Schema) |
-    | **Payload Size** | Medium (High Overhead) | Low (Flat Data) | Very Low | Very Low |
+    k| **Readability** | Excellent | Excellent | Very Poor | Poor (Needs Schema) || **Payload Size** | Medium (High Overhead) | Low (Flat Data) | Very Low | Very Low |
     | **Structure Limit** | Nested/Complex | Flat Only | Nested/Complex | Nested/Complex |
     | **Schema Enforcement** | Low (Schema required via external tool) | None | Medium | High (Mandatory) |
     | **Schema Evolution** | Poor | None | Medium | Excellent |
@@ -100,90 +252,156 @@ def _(mo):
 
 
 @app.cell
-def _():
-    from pathlib import Path
-    import msgpack
-    import os
-    import json
-    import orjson
+def _(Path, fastavro, msgpack, orjson, time):
+    # --- 1. SETUP & MASSIVE DATA GENERATION ---
+    def generate_complex_data(n=200_000):
+        print(f"🛠️  Generating {n} records...")
+        return {
+            "company": "MegaTech Global",
+            "stats": {"rank": 1, "active": True},
+            # We use a list of dicts for the main records
+            "records": [
+                {
+                    "id": i,
+                    "email": f"user_{i}@megatech.global",
+                    "zip": 10000 + (i % 9000),
+                    # Metadata as a simple flat dict to keep Avro mapping happy
+                    "metadata": {f"tag_{j}": i + j for j in range(3)},
+                }
+                for i in range(n)
+            ],
+        }
 
-    # 1. Create a sample dictionary/object
-    sample_data = {
-        "name": "Tech Company",
-        "employees": 1500,
-        "departments": ["Engineering", "Marketing", "HR"],
-        "active": True,
+
+    sample_data = generate_complex_data(200_000)
+
+    # Fixed Avro Schema to match the data structure exactly
+    schema = {
+        "type": "record",
+        "name": "BigData",
+        "fields": [
+            {"name": "company", "type": "string"},
+            {
+                "name": "stats",
+                "type": {
+                    "type": "record",
+                    "name": "Stat",
+                    "fields": [
+                        {"name": "rank", "type": "int"},
+                        {"name": "active", "type": "boolean"},
+                    ],
+                },
+            },
+            {
+                "name": "records",
+                "type": {
+                    "type": "array",
+                    "items": {
+                        "type": "record",
+                        "name": "User",
+                        "fields": [
+                            {"name": "id", "type": "int"},
+                            {"name": "email", "type": "string"},
+                            {"name": "zip", "type": "int"},
+                            {"name": "metadata", "type": {"type": "map", "values": "int"}},
+                        ],
+                    },
+                },
+            },
+        ],
     }
 
-    # Define paths using pathlib
-    msgpack_filename = Path("test_data.msgpack")
-    json_filename = Path("test_data.json")
 
-    # 2. Serialize the object to MsgPack format (bytes)
-    packed_data = msgpack.packb(sample_data)
-    print(f"MsgPack object created. Size: {len(packed_data)} bytes.")
+    # --- 2. THE BENCHMARK ENGINE ---
+    def benchmark(name, filename, save_logic, load_logic):
+        path = Path(filename)
 
-    # 3. Write the bytes object to disk (MsgPack)
-    with open(msgpack_filename, "wb") as f:
-        f.write(packed_data)
-    print(f"Data successfully written to {msgpack_filename}")
+        # --- WRITE TO DISK TIMER ---
+        start_write = time.perf_counter()
+        save_logic(sample_data, path)
+        write_time = time.perf_counter() - start_write
 
-    # 3b. Serialize the object to JSON format (bytes) using orjson
-    json_bytes = orjson.dumps(sample_data)
-    # 3c. Write the bytes object to disk (JSON)
-    with open(json_filename, "wb") as f:
-        f.write(json_bytes)
-    print(f"Data successfully written to {json_filename}")
+        file_size_mb = path.stat().st_size / (1024 * 1024)
 
+        # --- READ FROM DISK -> DICT TIMER ---
+        # This captures the full deserialization pipeline
+        start_read = time.perf_counter()
+        _ = load_logic(path)
+        read_total_time = time.perf_counter() - start_read
 
-    # 4. List file statistics
-    print("\n--- File Statistics ---")
-    try:
-        # Get stats for MsgPack file
-        file_stats_msgpack = msgpack_filename.stat()
-        print(f"MsgPack File Size (Bytes): {file_stats_msgpack.st_size}")
-    except FileNotFoundError:
-        print(f"MsgPack file ({msgpack_filename}) not found.")
+        if path.exists():
+            path.unlink()
 
-    try:
-        # Get stats for JSON file
-        file_stats_json = json_filename.stat()
-        print(f"JSON File Size (Bytes): {file_stats_json.st_size}")
-    except FileNotFoundError:
-        print(f"JSON file ({json_filename}) not found.")
-    return (Path,)
+        return write_time, read_total_time, file_size_mb
 
 
-@app.cell
-def _(Path):
-    data_dir = Path("./data")
-    json_file = data_dir / "housing_test_1.json"
-    msgpack_file = data_dir / "housing_test_1.msgpack"
-    avro_file = data_dir / "housing_test_1.avro"
-
-    print("--- File Size Check (pathlib st_size) ---")
-
-    # Check and list size for JSON file
-    if json_file.exists():
-        size_json = json_file.stat().st_size
-        print(f"'{json_file}' size: {size_json / 1_000} kb")
-    else:
-        print(f"'{json_file}' not found.")
-
-    # Check and list size for MsgPack file
-    if msgpack_file.exists():
-        size_msgpack = msgpack_file.stat().st_size
-        print(f"'{msgpack_file}' size: {size_msgpack / 1_000} kb")
-    else:
-        print(f"'{msgpack_file}' not found.")
+    # --- 3. FORMAT WRAPPERS ---
 
 
-    # Check and list size for Avro file
-    if avro_file.exists():
-        size_msgpack = avro_file.stat().st_size
-        print(f"'{avro_file}' size: {size_msgpack / 1_000} kb")
-    else:
-        print(f"'{avro_file}' not found.")
+    # ORJSON (The fastest JSON library for Python)
+    def save_json(data, p):
+        with open(p, "wb") as f:
+            f.write(orjson.dumps(data))
+
+
+    def load_json(p):
+        with open(p, "rb") as f:
+            return orjson.loads(f.read())
+
+
+    # MSGPACK
+    def save_msg(data, p):
+        with open(p, "wb") as f:
+            f.write(msgpack.packb(data))
+
+
+    def load_msg(p):
+        with open(p, "rb") as f:
+            return msgpack.unpackb(f.read())
+
+
+    # AVRO
+    def save_avro(data, p):
+        with open(p, "wb") as f:
+            fastavro.writer(f, schema, [data])
+
+
+    def load_avro(p):
+        with open(p, "rb") as f:
+            reader = fastavro.reader(f)
+            return list(reader)[0]
+
+
+    # --- 4. EXECUTION ---
+    results = {}
+    results["JSON (orjson)"] = benchmark("JSON", "test.json", save_json, load_json)
+    results["MsgPack"] = benchmark("MsgPack", "test.msg", save_msg, load_msg)
+    results["Avro"] = benchmark("Avro", "test.avro", save_avro, load_avro)
+
+    # --- 5. RESULTS SUMMARY ---
+    print("\n" + "=" * 70)
+    print(
+        f"{'Format':<15} | {'Write (s)':<12} | {'Read->Dict (s)':<15} | {'Size (MB)':<10}"
+    )
+    print("-" * 70)
+    for fmt, (w, r, s) in results.items():
+        print(f"{fmt:<15} | {w:<12.4f} | {r:<15.4f} | {s:<10.2f}")
+    print("=" * 70)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    1. Write Speed: orjson often wins just because it is a raw speed demon that does not care about file size.
+
+    2. Read Speed: MsgPack is usually the favorite for internal stuff because it is binary and very easy for the CPU to digest.
+
+    3. File Size: Avro wins every time because it is smart enough not to repeat labels.
+
+    All in all...
+                                                                                                         In a real-world project, you would probably pick MsgPack if you want raw speed between your own services, or Avro if you are paying for every gigabyte of storage in a database.
+    """)
     return
 
 
@@ -240,7 +458,7 @@ def _(mo):
 
 
 @app.cell
-def _():
+def _(time):
     # This demonstration simulates Avro's use of a predefined Reader Schema when consuming a stream of records
     # written across different 'batches' (or files) that follow differing field structures.
 
@@ -296,6 +514,7 @@ def _():
 
     # Simulate reading Batch 1 using the TARGET_SCHEMA (which expects 'age' and 'city')
     print("Reading Batch 1 (Missing 'age' and 'city')...")
+    start_time_1 = time.time()
     for record in batch_1_records:
         # Avro reader code automatically fills in defaults for missing fields
         # If 'age' was not available in the batch, it defaults it; if 'city' was missing, it defaults it.
@@ -307,12 +526,17 @@ def _():
         }
         all_records.append(readable_record)
         print(
-            f"  -> Read 101: Name={record['name']}, Age={readable_record['age']} (Defaulted), City=None"
+            f"  -> Read {record['id']}: Name={record['name']}, Age={readable_record['age']} (Defaulted), City=None"
         )
+    end_time_1 = time.time()
+    print(
+        f"\n[TIMING RESULT] Batch 1 Reading Time: {end_time_1 - start_time_1:.6f} seconds."
+    )
 
 
     # Simulate reading Batch 2 using the TARGET_SCHEMA
     print("\nReading Batch 2 (Contains 'age', Missing 'city')...")
+    start_time_2 = time.time()
     for record in batch_2_records:
         readable_record = {
             "id": record["id"],
@@ -322,12 +546,17 @@ def _():
         }
         all_records.append(readable_record)
         print(
-            f"  -> Read 201: Name={record['name']}, Age={readable_record['age']}, City=None"
+            f"  -> Read {record['id']}: Name={record['name']}, Age={readable_record['age']}, City=None"
         )
+    end_time_2 = time.time()
+    print(
+        f"\n[TIMING RESULT] Batch 2 Reading Time: {end_time_2 - start_time_2:.6f} seconds."
+    )
 
 
     # Simulate reading Batch 3 using the TARGET_SCHEMA
     print("\nReading Batch 3 (Complete structure)...\n")
+    start_time_3 = time.time()
     for record in batch_3_records:
         readable_record = {
             "id": record["id"],
@@ -337,12 +566,16 @@ def _():
         }
         all_records.append(readable_record)
         print(
-            f"  -> Read 301: Name={record['name']}, Age={readable_record['age']}, City={readable_record['city']}"
+            f"  -> Read {record['id']}: Name={record['name']}, Age={readable_record['age']}, City={readable_record['city']}"
         )
+    end_time_3 = time.time()
+    print(
+        f"\n[TIMING RESULT] Batch 3 Reading Time: {end_time_3 - start_time_3:.6f} seconds."
+    )
 
 
     # --- 6. Final Result ---
-    print("\n==================================================================")
+    print("\n=================================================================")
     print(
         "✅ SUCCESS: All records, despite having differing structures, were successfully read!"
     )
@@ -379,7 +612,7 @@ def _():
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo):
     mo.md(r"""
     ## Compression
@@ -454,28 +687,6 @@ def _(mo):
     only use **one CPU core** to read that entire file, even if you have a cluster
     of 100 machines.
 
-    ---
-
-    ## The "Big Data" Options You Missed
-
-    Beyond the "Big Three," there are two other contenders often used in data
-    engineering:
-
-    ### 1. LZ4 (The Speed King)
-
-    If you think Snappy is fast, LZ4 is the athlete that makes it look slow.
-
-    * **The Vibe:** "I want to decompress data at the speed of RAM."
-    * **In PySpark:** It is often used for **Shuffle** operations (the internal moving of data between nodes) because the decompression speed is nearly instant.
-    * **Trade-off:** Very low compression ratio. It's best for transient data that needs to be moved across the network quickly.
-
-    ### 2. Bzip2 (The Space Saver)
-
-    Bzip2 is the "old school" high-compression choice.
-
-    * **The Vibe:** "I will squeeze this file until it's tiny, even if it takes all day."
-    * **In PySpark:** Bzip2's killer feature is that it is **natively splittable**. Unlike Gzip, Spark can take one giant `.bz2` file and split it across multiple executors.
-    * **Trade-off:** It is incredibly CPU-intensive. Your Spark job might get bottlenecked by the CPUs trying to unpack the data rather than the actual analysis.
 
     ---
 
@@ -525,28 +736,211 @@ def _(mo):
 
 
 @app.cell
-def _(Path):
-    import snappy
+def _(Path, snappy, time, zstd):
+    # Setup data directory and extensions
+    data_dir = Path("./data")
+    extensions = ["avro", "msgpack", "json"]
+    algorithms = [
+        ("snappy", snappy.compress, snappy.decompress),
+        ("zstd", zstd.compress, zstd.decompress),
+    ]
 
-    for ext in ["avro", "msgpack", "json"]:
-        with Path(f"./data/housing_test_1.{ext}").open('rb') as f_in:
-            data = snappy.compress(data=f_in.read())
-            with Path(f"./data/housing_test_1.{ext}.snappy").open('wb') as f_out:
-                f_out.write(data)
+    print(f"{'Ext':<8} | {'Algo':<8} | {'Encode+Write (s)':<18} | {'Load+Decode (s)':<18}")
+    print("-" * 60)
 
+    for ext in extensions:
+        input_path = data_dir / f"housing_test_1.{ext}"
+        if not input_path.exists():
+            continue
+
+        for algo_name, compress_func, decompress_func in algorithms:
+            output_path = data_dir / f"housing_test_1.{ext}.{algo_name}"
+
+            # --- ENCODING & WRITE TO DISK ---
+            start_enc = time.perf_counter()
+            with input_path.open("rb") as f_in:
+                raw_data = f_in.read()
+                compressed_data = compress_func(raw_data)
+
+            with output_path.open("wb") as f_out:
+                f_out.write(compressed_data)
+            end_enc = time.perf_counter()
+
+            enc_time = end_enc - start_enc
+
+            # --- LOAD & DECODING ---
+            start_dec = time.perf_counter()
+            with output_path.open("rb") as f_in_comp:
+                loaded_data = f_in_comp.read()
+                decompressed_data = decompress_func(loaded_data)
+            end_dec = time.perf_counter()
+
+            dec_time = end_dec - start_dec
+
+            # --- OUTPUT RESULTS ---
+            print(f"{ext:<8} | {algo_name:<8} | {enc_time:<18.6f} | {dec_time:<18.6f}")
     return
 
 
 @app.cell
 def _(Path):
-    for e in ["avro", "msgpack", "json"]:
+    for e in ["avro", "msgpack", "json", "parquet"]:
         p = Path(f"./data/housing_test_1.{e}.snappy")
+        fat = p.parent / p.stem
         if p.exists():
             p_size = p.stat().st_size
+            if fat.exists():
+                f_size = fat.stat().st_size
+                print(
+                    f"'{fat}' size: {f_size / 1_000} kb {((p_size - f_size) / f_size) * 100:.2f}%"
+                )
             print(f"'{p}' size: {p_size / 1_000} kb")
+
         else:
             print(f"'{p}' not found.")
 
+    p = Path(f"./data/housing_test_1.parquet.zst")
+    print(f"'{p}' size: {p_size / 1_000} kb")
+    return
+
+
+@app.cell
+def _(mo):
+    # --- UI ELEMENTS ---
+    mo.md("# Cloud Cost & Compression Simulator (AWS 2026)")
+
+    # Global Settings
+    requests_per_month = mo.ui.number(
+        value=1_000_000, label="Requests per Month", step=100_000
+    )
+    memory_mb = mo.ui.slider(
+        start=128, stop=10240, step=128, value=1024, label="Lambda Memory (MB)"
+    )
+    avg_revenue_per_user = mo.ui.number(value=50, label="Avg. Revenue per User ($)")
+
+    # Infrastructure Toggles
+    architecture = mo.ui.dropdown(
+        options={"x86_64": 0.0000166667, "ARM64 (Graviton)": 0.0000133334},
+        value="ARM64 (Graviton)",
+        label="CPU Architecture (Price/GB-sec)",
+    )
+    region_egress = mo.ui.dropdown(
+        options={
+            "US-East (Standard)": 0.09,
+            "Africa/South America (High)": 0.15,
+            "Cloudfront/CDN (Low)": 0.02,
+        },
+        value="US-East (Standard)",
+        label="AWS Egress Rate ($/GB)",
+    )
+
+    # Latency & Network
+    latency_ms = mo.ui.slider(
+        start=20, stop=2000, value=150, label="Base Network Latency (ms)"
+    )
+    inter_az_gb = mo.ui.slider(
+        start=0, stop=1000, value=10, label="Monthly Inter-System Data (GB)"
+    )
+
+    # Define the sidebar
+    sidebar = mo.sidebar(
+        [
+            mo.md("## 🛠️ Compute Settings"),
+            requests_per_month,
+            memory_mb,
+            architecture,
+            mo.md("---"),
+            mo.md("## 🌐 Network & Region"),
+            region_egress,
+            latency_ms,
+            inter_az_gb,
+            mo.md("---"),
+            mo.md("## 💰 Business Metrics"),
+            avg_revenue_per_user,
+        ]
+    )
+
+    # --- DATA TYPES & COMPRESSION MAPPING ---
+    # Updated with 2026 standard Brotli/Zstd targets
+    scenario_data = {
+        "JSON (Raw)": {"size_kb": 500, "cpu_ms": 120, "color": "#f44336"},
+        "JSON (Gzip)": {"size_kb": 120, "cpu_ms": 150, "color": "#e91e63"},
+        "JSON (Brotli)": {"size_kb": 105, "cpu_ms": 180, "color": "#009688"},
+        "Avro (Snappy)": {"size_kb": 90, "cpu_ms": 80, "color": "#9c27b0"},
+        "MsgPack (Zstd)": {"size_kb": 75, "cpu_ms": 110, "color": "#3f51b5"},
+    }
+
+    # --- AWS PRICING CONSTANTS ---
+    INTER_AZ_PER_GB = 0.01
+    REQUEST_PRICE_PER_M = 0.20
+
+    mo.as_html(sidebar)
+    return (
+        INTER_AZ_PER_GB,
+        REQUEST_PRICE_PER_M,
+        architecture,
+        inter_az_gb,
+        memory_mb,
+        region_egress,
+        requests_per_month,
+        scenario_data,
+    )
+
+
+@app.cell
+def _(
+    INTER_AZ_PER_GB,
+    REQUEST_PRICE_PER_M,
+    architecture,
+    inter_az_gb,
+    memory_mb,
+    mo,
+    region_egress,
+    requests_per_month,
+    scenario_data,
+):
+    xxx = []
+    for name, data in scenario_data.items():
+        # Compute Cost: (Memory in GB) * (Time in Sec) * (Architecture Rate) * (Total Requests)
+        compute_cost = (
+            (memory_mb.value / 1024)
+            * (data["cpu_ms"] / 1000)
+            * architecture.value
+            * requests_per_month.value
+        )
+
+        # Egress Cost: (Size in GB) * (Egress Rate)
+        total_gb = (requests_per_month.value * data["size_kb"]) / (1024 * 1024)
+        egress_cost = total_gb * region_egress.value
+
+        # Request Cost
+        request_cost = (requests_per_month.value / 1_000_000) * REQUEST_PRICE_PER_M
+
+        # Total monthly cost
+        total_cost = (
+            compute_cost
+            + egress_cost
+            + request_cost
+            + (inter_az_gb.value * INTER_AZ_PER_GB)
+        )
+
+        xxx.append(
+            {
+                "Format": name,
+                "Monthly Cost ($)": round(total_cost, 2),
+                "Payload Size (KB)": data["size_kb"],
+                "CPU Time (ms)": data["cpu_ms"],
+            }
+        )
+
+    # --- OUTPUTS ---
+    mo.md(f"### Simulation Results for {requests_per_month.value:,} requests")
+    mo.ui.table(xxx)
+    return
+
+
+@app.cell
+def _():
     return
 
 
