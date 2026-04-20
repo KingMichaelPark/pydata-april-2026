@@ -73,7 +73,7 @@ uv run generate_data.py --all --num-files 5 --num-records 5000 --verbose
 uv run generate_data.py json csv avro --num-files 2 --num-records 100 --verbose
 ```
 
-_Generated files are saved in the `data/` directory as `housing_test_{index}.{fmt}`._
+_Generated files are saved in the `data/` directory as `housing_test_{index}.{fmt}`.\_
 _Results are sorted by total time (ascending)._
 
 ### 🌐 Running the Web API

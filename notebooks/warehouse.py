@@ -1,3 +1,5 @@
+from typing import Any
+
 import marimo
 
 __generated_with = "0.23.1"
@@ -5,7 +7,7 @@ app = marimo.App(width="medium")
 
 
 @app.cell
-def _():
+def _() -> tuple[Any, ...]:
     import marimo as mo
 
     mo.md("# Data Warehouse Query & Storage Simulator (AWS 2026)")
@@ -14,7 +16,11 @@ def _():
     sidebar_header = mo.md("## 📊 Workload Settings")
 
     raw_data_tb = mo.ui.slider(
-        start=1, stop=1000, step=10, value=100, label="Raw Uncompressed Data Volume (TB)"
+        start=1,
+        stop=1000,
+        step=10,
+        value=100,
+        label="Raw Uncompressed Data Volume (TB)",
     )
 
     queries_per_month = mo.ui.number(
@@ -37,13 +43,17 @@ def _():
         start=0,
         stop=95,
         value=50,
-        label="Predicate Pushdown (% of internal file chunks skipped due to sorting/Z-order)",
+        label="Predicate Pushdown (% of internal file chunks skipped due to sorting)",
     )
 
     # AWS Pricing Constants
-    s3_storage_price_tb = mo.ui.number(value=23.55, label="S3 Standard Price per TB/mo ($)")
+    s3_storage_price_tb = mo.ui.number(
+        value=23.55, label="S3 Standard Price per TB/mo ($)"
+    )
 
-    athena_scan_price_tb = mo.ui.number(value=5.00, label="Athena Price per TB Scanned ($)")
+    athena_scan_price_tb = mo.ui.number(
+        value=5.00, label="Athena Price per TB Scanned ($)"
+    )
 
     sidebar = mo.sidebar(
         [
@@ -65,10 +75,19 @@ def _():
     )
 
     # --- FORMAT & COMPRESSION SCENARIOS ---
-    # is_columnar: Unlocks column skipping AND internal file chunk skipping (predicate pushdown)
+    # is_columnar: Unlocks column skipping AND internal file chunk
+    # skipping (predicate pushdown)
     scenario_data = {
-        "JSON (Raw)": {"size_multiplier": 1.0, "is_columnar": False, "color": "#f44336"},
-        "JSON (Gzip)": {"size_multiplier": 0.35, "is_columnar": False, "color": "#e91e63"},
+        "JSON (Raw)": {
+            "size_multiplier": 1.0,
+            "is_columnar": False,
+            "color": "#f44336",
+        },
+        "JSON (Gzip)": {
+            "size_multiplier": 0.35,
+            "is_columnar": False,
+            "color": "#e91e63",
+        },
         "Parquet (Uncompressed)": {
             "size_multiplier": 0.60,
             "is_columnar": True,
@@ -101,16 +120,16 @@ def _():
 
 @app.cell
 def _(
-    athena_scan_price_tb,
-    columns_accessed_pct,
-    mo,
-    partition_pruning_pct,
-    queries_per_month,
-    raw_data_tb,
-    s3_storage_price_tb,
-    scenario_data,
-    z_ordering_pct,
-):
+    athena_scan_price_tb,  # noqa: ANN001
+    columns_accessed_pct,  # noqa: ANN001
+    mo,  # noqa: ANN001
+    partition_pruning_pct,  # noqa: ANN001
+    queries_per_month,  # noqa: ANN001
+    raw_data_tb,  # noqa: ANN001
+    s3_storage_price_tb,  # noqa: ANN001
+    scenario_data,  # noqa: ANN001
+    z_ordering_pct,  # noqa: ANN001
+) -> None:
     # --- CALCULATION ENGINE ---
     results = []
     for name, data in scenario_data.items():
@@ -121,7 +140,8 @@ def _(
         # 2. Query/Scan Volume Calculation
         base_scan_tb = stored_tb
 
-        # Apply Partition Pruning (Works for both JSON and Parquet if S3 folders are organized)
+        # Apply Partition Pruning
+        # (Works for both JSON and Parquet if S3 folders are organized)
         pruned_scan_tb = base_scan_tb * (1 - (partition_pruning_pct.value / 100.0))
         actual_scan_tb_per_query = pruned_scan_tb
 
@@ -131,7 +151,8 @@ def _(
             actual_scan_tb_per_query = actual_scan_tb_per_query * (
                 columns_accessed_pct.value / 100.0
             )
-            # Skip unneeded chunks inside the file using min/max metadata (Because data is ordered)
+            # Skip unneeded chunks inside the file using min/max metadata
+            # (Because data is ordered)
             actual_scan_tb_per_query = actual_scan_tb_per_query * (
                 1 - (z_ordering_pct.value / 100.0)
             )
@@ -155,14 +176,9 @@ def _(
     # --- OUTPUTS ---
 
     mo.md(
-        f"### Data Lake Economics: {raw_data_tb.value} TB Raw Data | {queries_per_month.value} Queries/mo"
+        f"### Data Lake Economics: {raw_data_tb.value} TB Raw Data | {queries_per_month.value} Queries/mo"  # noqa: E501
     )
     mo.ui.table(results)
-    return
-
-
-@app.cell
-def _():
     return
 
 

@@ -1,22 +1,22 @@
 from __future__ import annotations
-from litestar.params import Body
-from litestar.datastructures import UploadFile
-from litestar.enums import RequestEncodingType
 
 import csv
 import io
 import json
 import time
+from collections.abc import Generator
 from datetime import datetime
-from typing import Generator
 
 import fastavro
 import msgpack
 import orjson
 import ujson
 from litestar import Litestar, get, post
+from litestar.datastructures import UploadFile
 from litestar.di import Provide
+from litestar.enums import RequestEncodingType
 from litestar.exceptions import ClientException
+from litestar.params import Body
 from sqlalchemy import create_engine, func, insert, select
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -27,10 +27,12 @@ from sqlalchemy.orm import (
 )
 
 
-class Base(DeclarativeBase): ...
+class Base(DeclarativeBase): ...  # noqa: D101
 
 
 class HousingData(Base):
+    """Housing Data database table."""
+
     __tablename__ = "housing_data"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     num_rooms: Mapped[int]
@@ -62,6 +64,13 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 # 3. Dependency function to provide a session
 def get_db_session() -> Generator[Session]:
+    """
+    Provide a database session.
+
+    Yields:
+        Session: The database session.
+
+    """
     with SessionLocal() as session:
         yield session
 
@@ -73,6 +82,7 @@ database_dependencies = {"db_session": Provide(get_db_session)}
     path="/favicon.ico",
 )
 def get_favicon() -> None:
+    """Return an empty favicon."""
     return
 
 
@@ -81,9 +91,16 @@ async def get_housing(
     db_session: Session, page: int = 1, limit: int = 10
 ) -> list[HousingData]:
     """
-    Fetch paginated housing data.
-    - limit: How many items to return.
-    - offset: How many items to skip ( (page - 1) * limit ).
+    Fetch paginated housing data from the database.
+
+    Args:
+        db_session (Session): The database session used to execute the query.
+        page (int): The page number to retrieve, starting from 1. Defaults to 1.
+        limit (int): The maximum number of items to return per page. Defaults to 10.
+
+    Returns:
+        list[HousingData]: A list of housing data records for the specified page.
+
     """
     # Calculate how many records to skip
     offset = (page - 1) * limit
@@ -100,12 +117,28 @@ async def add_housing(
     db_session: Session,
     file_type: str,
     insert_mode: str,
-    data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),
+    data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),  # noqa: B008
 ) -> str:
     """
-    Parses data based on file_type and inserts via ORM or Core.
-    """
+    Parse housing data from an uploaded file and insert it into the database.
 
+    Args:
+        db_session (Session): The database session to use for insertion.
+        file_type (str): The format of the input file (e.g., json, csv, avro).
+        insert_mode (str): The insertion strategy to use (orm or core).
+        data (UploadFile): The uploaded file object containing the raw housing data.
+
+    Returns:
+        str: An HTML string summarizing the processing and insertion performance metrics
+
+    Raises:
+        ClientException: If the file type is unsupported, parsing fails,
+            or the insert mode is invalid.
+
+    Note:
+        This function commits the transaction to the database.
+
+    """
     start_deserialization = time.perf_counter()
     content = await data.read()
     # 1. Handle File Parsing with Case Match
@@ -134,7 +167,7 @@ async def add_housing(
                     parsed_data.append(row)
             case "avro":
                 # Requires fastavro
-                HOUSING_AVRO_SCHEMA = {
+                housing_avro_schema = {
                     "type": "record",
                     "name": "HousingData",
                     "fields": [
@@ -156,12 +189,12 @@ async def add_housing(
 
                 fo = io.BytesIO(content)
                 parsed_data = list(
-                    fastavro.reader(fo, reader_schema=HOUSING_AVRO_SCHEMA)
+                    fastavro.reader(fo, reader_schema=housing_avro_schema)
                 )
             case _:
                 raise ClientException(f"Unsupported file type: {file_type}")
     except Exception as e:
-        raise ClientException(f"Failed to parse {file_type}: {str(e)}")
+        raise ClientException(f"Failed to parse {file_type}: {e!s}") from e
 
     end_deserialization = time.perf_counter()
     deserialization_time = end_deserialization - start_deserialization
@@ -171,7 +204,7 @@ async def add_housing(
         parsed_data = [parsed_data]
 
     start_insertion = time.perf_counter()
-    # 2. Handle Insert Mode with Case Match
+
     match insert_mode.lower():
         case "orm":
             # Create model instances and add to session
@@ -191,15 +224,13 @@ async def add_housing(
     end_insertion = time.perf_counter()
     insertion_time = end_insertion - start_insertion
 
-    # 3. Return HTML table with metrics
-    html = f"""
+    return f"""
         File Type: {file_type}
         Insert Mode: {insert_mode}
         Records Count: {len(parsed_data)}
         Deserialization Time (s): {deserialization_time:.6f}
         Insertion Time (s): {insertion_time:.6f}
     """
-    return html
 
 
 app = Litestar(

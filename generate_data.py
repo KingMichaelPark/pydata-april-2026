@@ -3,11 +3,12 @@ import csv
 import json
 import time
 from pathlib import Path
+from typing import Any
 
+import fastavro
+import msgpack
 import orjson
 import ujson
-import msgpack
-import fastavro
 from faker import Faker
 
 # Initialize Faker
@@ -32,65 +33,100 @@ HOUSING_AVRO_SCHEMA = {
 }
 
 
-def generate_records(count: int = 1000):
-    records = []
-    for _ in range(1, count + 1):
-        records.append(
-            {
-                "num_rooms": fake.random_int(min=1, max=10),
-                "num_bathrooms": float(fake.random_int(min=1, max=5)),
-                "sq_feet": fake.random_int(min=500, max=5000),
-                "aesthetic": fake.word(),
-                "price": fake.random_int(min=100000, max=2000000),
-                "address": fake.address().replace("\n", ", "),
-                "city": fake.city(),
-                "year_built": int(fake.year()) if fake.boolean() else None,
-                "is_available": fake.boolean(),
-                "has_garage": fake.boolean(),
-            }
-        )
-    return records
+def generate_records(count: int = 1000) -> list[dict[str, Any]]:
+    """
+    Generate a list of random real estate records.
+
+    Args:
+        count (int): The number of records to generate. Defaults to 1000.
+
+    Returns:
+        list[dict]: A list of dictionaries containing random property data.
+
+    """
+    return [
+        {
+            "num_rooms": fake.random_int(min=1, max=10),
+            "num_bathrooms": float(fake.random_int(min=1, max=5)),
+            "sq_feet": fake.random_int(min=500, max=5000),
+            "aesthetic": fake.word(),
+            "price": fake.random_int(min=100000, max=2000000),
+            "address": fake.address().replace("\n", ", "),
+            "city": fake.city(),
+            "year_built": int(fake.year()) if fake.boolean() else None,
+            "is_available": fake.boolean(),
+            "has_garage": fake.boolean(),
+        }
+        for _ in range(count)
+    ]
 
 
 def save_and_time(
     fmt: str, data: list, output_dir: Path, index: int = 1
 ) -> tuple[float, int]:
+    """
+    Save data in a specified format and measure the processing time and file size.
+
+    Args:
+        fmt (str): The serialization format to use (e.g., 'json', 'csv', 'avro').
+        data (list): The list of data objects to be saved.
+        output_dir (Path): The directory path where the output file will be created.
+        index (int): An optional index for the filename. Defaults to 1.
+
+    Returns:
+        tuple[float, int]: A tuple containing the elapsed time in seconds
+        and the file size in bytes.
+
+    """
     file_path = output_dir / f"housing_test_{index}.{fmt}"
 
     start_time = time.perf_counter()
+    match fmt:
+        case "json":
+            with file_path.open("w") as f:
+                json.dump(data, f)
 
-    if fmt == "json":
-        with open(file_path, "w") as f:
-            json.dump(data, f)
+        case "orjson":
+            with file_path.open("wb") as f:
+                f.write(orjson.dumps(data))
 
-    elif fmt == "orjson":
-        with open(file_path, "wb") as f:
-            f.write(orjson.dumps(data))
+        case "ujson":
+            with file_path.open("w") as f:
+                ujson.dump(data, f)
 
-    elif fmt == "ujson":
-        with open(file_path, "w") as f:
-            ujson.dump(data, f)
+        case "msgpack":
+            with file_path.open("wb") as f:
+                f.write(msgpack.packb(data))
 
-    elif fmt == "msgpack":
-        with open(file_path, "wb") as f:
-            f.write(msgpack.packb(data))
+        case "csv":
+            with file_path.open("w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=data[0].keys())
+                writer.writeheader()
+                writer.writerows(data)
 
-    elif fmt == "csv":
-        with open(file_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=data[0].keys())
-            writer.writeheader()
-            writer.writerows(data)
-
-    elif fmt == "avro":
-        with open(file_path, "wb") as f:
-            fastavro.writer(f, HOUSING_AVRO_SCHEMA, data)
+        case "avro":
+            with file_path.open("wb") as f:
+                fastavro.writer(f, HOUSING_AVRO_SCHEMA, data)
 
     end_time = time.perf_counter()
     file_size = file_path.stat().st_size
     return end_time - start_time, file_size
 
 
-def main():
+def main() -> None:
+    """
+    Generate and benchmark mock housing data across multiple formats.
+
+    Parse command-line arguments to configure data generation, iterate through
+    the specified formats, and display performance statistics for timing and size.
+
+    Args:
+        None
+
+    Returns:
+        None
+
+    """
     supported = ["json", "orjson", "ujson", "msgpack", "csv", "avro"]
 
     parser = argparse.ArgumentParser(

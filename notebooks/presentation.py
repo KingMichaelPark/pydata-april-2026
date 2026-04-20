@@ -6,19 +6,15 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
-    import marimo as mo
+    import time  # Import time for performance measurement
     from pathlib import Path
+
+    import fastavro  # Assuming fastavro is available for Avro handling
+    import marimo as mo
     import msgpack
-    import os
-    import json
     import orjson
     import snappy
     import zstd
-    import fastavro  # Assuming fastavro is available for Avro handling
-    import time  # Import time for performance measurement
-
-    import pandas as pd
-    import altair as alt
 
     return Path, fastavro, mo, msgpack, orjson, snappy, time, zstd
 
@@ -799,7 +795,7 @@ def _(Path):
         else:
             print(f"'{p}' not found.")
 
-    p = Path(f"./data/housing_test_1.parquet.zst")
+    p = Path("./data/housing_test_1.parquet.zst")
     print(f"'{p}' size: {p_size / 1_000} kb")
     return
 
