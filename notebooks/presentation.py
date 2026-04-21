@@ -268,7 +268,6 @@ def _(Path, fastavro, msgpack, orjson, time):
             ],
         }
 
-
     sample_data = generate_complex_data(200_000)
 
     # Fixed Avro Schema to match the data structure exactly
@@ -299,14 +298,16 @@ def _(Path, fastavro, msgpack, orjson, time):
                             {"name": "id", "type": "int"},
                             {"name": "email", "type": "string"},
                             {"name": "zip", "type": "int"},
-                            {"name": "metadata", "type": {"type": "map", "values": "int"}},
+                            {
+                                "name": "metadata",
+                                "type": {"type": "map", "values": "int"},
+                            },
                         ],
                     },
                 },
             },
         ],
     }
-
 
     # --- 2. THE BENCHMARK ENGINE ---
     def benchmark(name, filename, save_logic, load_logic):
@@ -330,43 +331,35 @@ def _(Path, fastavro, msgpack, orjson, time):
 
         return write_time, read_total_time, file_size_mb
 
-
     # --- 3. FORMAT WRAPPERS ---
-
 
     # ORJSON (The fastest JSON library for Python)
     def save_json(data, p):
         with open(p, "wb") as f:
             f.write(orjson.dumps(data))
 
-
     def load_json(p):
         with open(p, "rb") as f:
             return orjson.loads(f.read())
-
 
     # MSGPACK
     def save_msg(data, p):
         with open(p, "wb") as f:
             f.write(msgpack.packb(data))
 
-
     def load_msg(p):
         with open(p, "rb") as f:
             return msgpack.unpackb(f.read())
-
 
     # AVRO
     def save_avro(data, p):
         with open(p, "wb") as f:
             fastavro.writer(f, schema, [data])
 
-
     def load_avro(p):
         with open(p, "rb") as f:
             reader = fastavro.reader(f)
             return list(reader)[0]
-
 
     # --- 4. EXECUTION ---
     results = {}
@@ -500,7 +493,6 @@ def _(time):
     ]
     print("[Batch 3 Written] Schema: id, name, age, city (Full structure achieved)")
 
-
     # --- 5. The Avro Reading Process (Conceptual Implementation) ---
 
     print("\n\n--- ⚙️ Stage 2: Structured Reading with Avro (Stream Processing) ---")
@@ -529,7 +521,6 @@ def _(time):
         f"\n[TIMING RESULT] Batch 1 Reading Time: {end_time_1 - start_time_1:.6f} seconds."
     )
 
-
     # Simulate reading Batch 2 using the TARGET_SCHEMA
     print("\nReading Batch 2 (Contains 'age', Missing 'city')...")
     start_time_2 = time.time()
@@ -548,7 +539,6 @@ def _(time):
     print(
         f"\n[TIMING RESULT] Batch 2 Reading Time: {end_time_2 - start_time_2:.6f} seconds."
     )
-
 
     # Simulate reading Batch 3 using the TARGET_SCHEMA
     print("\nReading Batch 3 (Complete structure)...\n")
@@ -569,7 +559,6 @@ def _(time):
         f"\n[TIMING RESULT] Batch 3 Reading Time: {end_time_3 - start_time_3:.6f} seconds."
     )
 
-
     # --- 6. Final Result ---
     print("\n=================================================================")
     print(
@@ -579,7 +568,6 @@ def _(time):
     print("Example final read format (homogeneous):")
     print(all_records)
     print("==================================================================")
-
 
     # --- 🚀 Contrast with JSON ---
 
@@ -741,7 +729,9 @@ def _(Path, snappy, time, zstd):
         ("zstd", zstd.compress, zstd.decompress),
     ]
 
-    print(f"{'Ext':<8} | {'Algo':<8} | {'Encode+Write (s)':<18} | {'Load+Decode (s)':<18}")
+    print(
+        f"{'Ext':<8} | {'Algo':<8} | {'Encode+Write (s)':<18} | {'Load+Decode (s)':<18}"
+    )
     print("-" * 60)
 
     for ext in extensions:
