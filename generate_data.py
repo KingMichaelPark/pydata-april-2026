@@ -33,12 +33,12 @@ HOUSING_AVRO_SCHEMA = {
 }
 
 
-def generate_records(count: int = 1000) -> list[dict[str, Any]]:
+def generate_records(count: int = 10_000) -> list[dict[str, Any]]:
     """
     Generate a list of random real estate records.
 
     Args:
-        count (int): The number of records to generate. Defaults to 1000.
+        count (int): The number of records to generate. Defaults to 10_000.
 
     Returns:
         list[dict]: A list of dictionaries containing random property data.
@@ -142,7 +142,7 @@ def main() -> None:
     parser.add_argument(
         "--num-records",
         type=int,
-        default=1000,
+        default=10_000,
         help="Number of records to generate per file",
     )
     parser.add_argument(

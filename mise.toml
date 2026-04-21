@@ -8,3 +8,9 @@ run = [
     "uv run alembic upgrade head",
     "uv run generate_data.py --all"
 ]
+
+[tasks.web]
+description = "Run the litestar web server"
+run = [
+    "uv run python web/app.py"
+]

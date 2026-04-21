@@ -7,10 +7,10 @@ import httpx
 # List of files in the /data folder
 # Configuration
 DATA_DIR = Path("data")
-API_URL = "http://localhost:8000/housing"  # Assuming the service runs on localhost:8000
+API_URL = "http://0.0.0.0:8000/housing"  # Assuming the service runs on localhost:8000
 INSERT_MODES = ["orm", "core"]
 
-file_list: list[Path] = list(Path(DATA_DIR).iterdir())
+file_list: list[Path] = [x for x in Path(DATA_DIR).iterdir() if x.is_file()]
 
 
 async def process_file(

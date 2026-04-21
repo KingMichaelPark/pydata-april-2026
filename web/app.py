@@ -11,6 +11,8 @@ import fastavro
 import msgpack
 import orjson
 import ujson
+import uvicorn
+from pathlib import Path
 from litestar import Litestar, get, post
 from litestar.datastructures import UploadFile
 from litestar.di import Provide
@@ -49,8 +51,13 @@ class HousingData(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+# Get the directory where app.py is located
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "pydata.sqlite"
+
+
 engine = create_engine(
-    "sqlite+pysqlite:///pydata.sqlite",
+    f"sqlite+pysqlite:///{DB_PATH}",
     echo=False,  # Log all SQL commands to the console
     connect_args={
         "check_same_thread": False
@@ -81,12 +88,12 @@ database_dependencies = {"db_session": Provide(get_db_session)}
 @get(
     path="/favicon.ico",
 )
-def get_favicon() -> None:
+async def get_favicon() -> None:
     """Return an empty favicon."""
     return
 
 
-@get(path="/housing", sync_to_thread=True)
+@get(path="/housing")
 async def get_housing(
     db_session: Session, page: int = 1, limit: int = 10
 ) -> list[HousingData]:
@@ -112,7 +119,7 @@ async def get_housing(
     return list(db_session.scalars(stmt))
 
 
-@post(path="/housing", sync_to_thread=True, media_type="text/html")
+@post(path="/housing", media_type="text/html")
 async def add_housing(
     db_session: Session,
     file_type: str,
@@ -238,3 +245,7 @@ app = Litestar(
     debug=False,
     dependencies=database_dependencies,
 )
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)  # noqa: S104
