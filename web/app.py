@@ -6,13 +6,13 @@ import json
 import time
 from collections.abc import Generator
 from datetime import datetime
+from pathlib import Path
 
 import fastavro
 import msgpack
 import orjson
 import ujson
 import uvicorn
-from pathlib import Path
 from litestar import Litestar, get, post
 from litestar.datastructures import UploadFile
 from litestar.di import Provide

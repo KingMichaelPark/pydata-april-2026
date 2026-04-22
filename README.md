@@ -55,6 +55,8 @@ Set up the SQLite database schema using Alembic:
 
 ```bash
 uv run alembic upgrade head
+# Or
+mise run setup
 ```
 
 ---
