@@ -129,17 +129,34 @@ Stay Away
 
 <!-- end_slide -->
 
-Data Compression
-===
-
-
-<!-- end_slide -->
-
 Web
 ===
 
+- Demo 1
+
 <!-- end_slide -->
 
 
-Data
+Data Formats
 ===
+
+- Demo 2
+
+<!-- end_slide -->
+
+Data Compression
+===
+
+- Demo 3
+
+<!-- end_slide -->
+
+Why does this matter
+===
+
+- Demo 4
+
+AI will do what you tell it, you just need to be aware of
+what you need to consider before you tell it what to do. There
+are real costs, performance penalties, all that can be hidden
+away from a commit with passing unit tests and functioning code.

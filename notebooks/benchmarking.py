@@ -13,8 +13,16 @@ def _():
     import time
     import os
     from pathlib import Path
+    import subprocess
 
-    return Path, duckdb, mo, pd, pl, time
+    return Path, duckdb, mo, pd, pl, subprocess, time
+
+
+@app.cell
+def _(Path, subprocess):
+    if not Path("data/housing_test_1.parquet").exists():
+        subprocess.run(["duckdb", "-c", "COPY (SELECT * FROM 'data/housing_test_1.csv') TO 'data/housing_test_1.parquet' (FORMAT PARQUET);"])
+    return
 
 
 @app.cell
@@ -47,6 +55,11 @@ def _():
         "word": "periodt",
     }
     return (aesthetic_map,)
+
+
+@app.cell
+def _():
+    return
 
 
 @app.cell(hide_code=True)

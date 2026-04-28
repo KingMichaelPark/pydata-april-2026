@@ -1,5 +1,3 @@
-from typing import Any
-
 import marimo
 
 __generated_with = "0.23.1"
@@ -7,7 +5,7 @@ app = marimo.App(width="medium")
 
 
 @app.cell
-def _() -> tuple[Any, ...]:
+def _():
     import marimo as mo
 
     mo.md("# Data Warehouse Query & Storage Simulator (AWS 2026)")
@@ -120,16 +118,16 @@ def _() -> tuple[Any, ...]:
 
 @app.cell
 def _(
-    athena_scan_price_tb,  # noqa: ANN001
-    columns_accessed_pct,  # noqa: ANN001
-    mo,  # noqa: ANN001
-    partition_pruning_pct,  # noqa: ANN001
-    queries_per_month,  # noqa: ANN001
-    raw_data_tb,  # noqa: ANN001
-    s3_storage_price_tb,  # noqa: ANN001
-    scenario_data,  # noqa: ANN001
-    z_ordering_pct,  # noqa: ANN001
-) -> None:
+    athena_scan_price_tb,
+    columns_accessed_pct,
+    mo,
+    partition_pruning_pct,
+    queries_per_month,
+    raw_data_tb,
+    s3_storage_price_tb,
+    scenario_data,
+    z_ordering_pct,
+):
     # --- CALCULATION ENGINE ---
     results = []
     for name, data in scenario_data.items():
@@ -179,6 +177,29 @@ def _(
         f"### Data Lake Economics: {raw_data_tb.value} TB Raw Data | {queries_per_month.value} Queries/mo"  # noqa: E501
     )
     mo.ui.table(results)
+    return
+
+
+app._unparsable_cell(
+    r"""
+    data/year=2020/month=01
+    """,
+    name="_"
+)
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
     return
 
 

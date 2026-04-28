@@ -31,7 +31,7 @@ def _(mo):
     ## 📐 Format Deep Dive
 
     ### 🌐 JSON (JavaScript Object Notation)
-    JSON is a text-based, language-independent format that uses human-readable key-value pairs. It is the de facto standard for modern APIs.
+    JSON is a text-based, language-independent format that uses human-readable key-value pairs. Pretty much the de facto standard for modern APIs.
 
     There are a couple variations that you may come across and in certain contexts.
 
@@ -100,7 +100,8 @@ def _(mo):
     * **Strict Typing:** It does not inherently enforce schema (though tools like JSON Schema help).
 
     **💡 When to use it:**
-    When human readability, simplicity, and maximum compatibility across various systems are the top priorities (e.g., public APIs, configuration files).
+
+    When readability, simplicity, and maximum compatibility across various systems are the top priorities (e.g., public APIs, configuration files, niche PaaS).
 
     ### 📄 CSV (Comma Separated Values)
 
@@ -114,38 +115,46 @@ def _(mo):
     ```
 
     **✅ Pros:**
+
     * **Simplicity:** Extremely simple structure; nearly every spreadsheet program can read/write it.
     * **Compatibility:** Works well for simple, flat, homogeneous datasets (e.g., logs, basic data dumps).
     * **Compact (for simple data):** Can be very compact for uniformly structured data.
     * **At least it's better than Excel docs!**
 
     **❌ Cons:**
+
     * **Data Loss of Structure:** It is inherently difficult to represent complex, nested, or hierarchical data (like JSON objects).
     * **Ambiguity:** Handling non-text data, delimiters within data fields (e.g., commas containing text), and quoting rules can be complex and error-prone.
-    * **Lack of Metadata:** No native way to describe the schema, types, or context of the data within the file itself.
+    * **Lack of Metadata:** No native way to describe the schema, types, or context of the data within the file itself. (leaning on something like pydantic to validate can be done if required.)
 
     **💡 When to use it:**
-    For transferring simple, tabular datasets (e.g., CSV files uploaded to a service for batch processing). Generally discouraged for core, complex API payloads.
+
+    For transferring simple, tabular datasets (e.g., CSV files uploaded to a service for batch processing). Generally discouraged for core, complex API payloads. (working with other departments that work primarily in excel, just have them send it to you as CSV and have them check it first)
 
     ### 📦 MsgPack (MessagePack)
+
     MsgPack is a binary serialization format. It aims to be faster and smaller than JSON by using binary representations for data types instead of text.
 
-    It is still fundamentally like JSON though, which means that the schema can be whatever and the receiver will have to unpack the fields and check the values just like you would need to with JSON.
+    It is still fundamentally like JSON though, which means that the schema can be whatever and the receiver will have to unpack the fields and check the values just like you would need to with JSON. (it's just a bit tinier!)
 
     **✅ Pros:**
+
     * **Efficiency:** Significantly more compact and faster to serialize/deserialize than JSON because it eliminates textual overhead.
     * **Speed:** Ideal for high-throughput, internal microservice communications where speed is paramount.
     * **Simplicity (Conceptually):** Maintains the key-value structure of JSON but in binary.
 
     **❌ Cons:**
+
     * **Readability:** Completely unreadable to humans without specialized tools.
     * **Adoption:** While gaining traction, it is less universally adopted than JSON, requiring stable libraries on both ends.
 
     **💡 When to use it:**
-    When you need JSON-like structure and high efficiency, but performance and payload size are major concerns (e.g., internal real-time data streams).
+
+    When you want JSON but performance and payload size are major concerns (e.g., internal real-time data streams, remote regions with slow network speeds and large payloads. Every bit counts 😉)
 
     ### 🏛️ Avro (Apache Avro)
-    Avro is a data serialization system that typically includes a robust schema definition language (JSON Schema) alongside the data. It is schema-based and highly optimized for handling complex, evolving data schemas.
+
+    Avro is a data serialization system that typically includes a robust schema definition language (JSON Schema) alongside the data. It is schema-based and optimised for dealing with complex, evolving data schemas.
 
     You'll have something like a `user.avsc` file which will define the schema to pack the data in...
 
@@ -217,6 +226,7 @@ def _(mo):
 
 
     **✅ Pros:**
+
     * **Schema Evolution:** This is its biggest advantage. It handles schema changes (e.g., adding or removing fields) gracefully without breaking older consumers, making it perfect for long-lived APIs.
     * **Efficiency:** Highly efficient, schema-enforced binary serialization, often comparable to Protocol Buffers.
     * **Data Integrity:** The schema ensures that both the sender and receiver agree on how the data is structured, minimizing runtime errors.
@@ -224,10 +234,12 @@ def _(mo):
 
 
     **❌ Cons:**
+
     * **Complexity:** Requires strict schema definition and implementation, adding initial complexity compared to JSON.
     * **Tooling:** While excellent, setting up the schema registry and serialization framework is more involved than just sending a JSON string.
 
     **💡 When to use it:**
+
     When reliability, schema enforcement, and the ability to change data structure over time (schema evolution) without service disruption are critical (e.g., streaming data pipelines, Kafka topics).
 
 
@@ -394,7 +406,7 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo):
     mo.md(r"""
     ### 💡 Why Avro Can Be Smaller Than MsgPack (The Structural Difference)
@@ -407,30 +419,32 @@ def _(mo):
 
     #### 📦 MsgPack: Self-Contained Data Serialization
 
-    **Makeup:** MsgPack is designed to serialize a structured object (like a Python dictionary) into the most compact binary equivalent possible.
+    MsgPack is designed to serialize a structured object (like a Python dictionary -> pickle) into the most compact binary equivalent possible.
 
-    **How it works:**
-    1.  It treats the entire dataset as a single, cohesive *object*.
+    How it works:
+
+    1.  It treats the entire dataset as a single, cohesive object.
     2.  It replaces text strings, numbers, lists, and maps with their specific binary type identifiers.
     3.  The overhead is minimal (just the type markers and length prefixes).
 
-    **Size implication:** The size is primarily dictated by the data payload itself. It is excellent at minimizing overhead compared to JSON, but it still encodes the structure and keys for *every single object* it serializes.
+    **Size implication:** The size is primarily dictated by the data payload itself. It is good at minimising overhead compared to JSON, but it still encodes the structure and keys for every single it serializes.
 
     ---
 
     #### 🏛️ Avro: Schema-Enforced, Streaming Serialization
 
-    **Makeup:** Avro is *schema-based*. It separates the schema (the blueprint) from the data (the payloads).
+    Avro is schema-based, it separates the schema from the data (the payload).
 
-    **How it works:**
-    1.  **Schema is Paramount:** Avro requires a defined schema (`.avsc` or defined in code). This schema acts as the master reference for how the data is constructed.
-    2.  **Data Encoding:** Avro doesn't just serialize one object; it is optimized for writing potentially millions of records sequentially (streaming).
-    3.  **Efficiency Gain (The Key):** Because the schema is defined and known beforehand (and often stored once or implied), **Avro does not need to repeatedly encode the field names or the data types for every single record.**
+    How it works:
+
+    1.  Avro requires a defined schema (`.avsc` or defined in code). This schema acts as the master reference for how the data is constructed.
+    2. Avro doesn't just serialize one object; it is optimized for writing potentially millions of records sequentially (streaming).
+    3. It's very efficient because the schema is defined and known beforehand (and often stored once or implied). Therefore, Avro does not need to repeatedly encode the field names or the data types for every single record.
 
     **Size implication:**
 
-    *   **Minimal Redundancy:** If you are writing 1,000 records, MsgPack effectively encodes "field\_a: type\_X" 1,000 times (even if implicitly). Avro, because it relies on the external schema, only has to encode the structural information once, allowing the data section to be much more dense and optimized.
-    *   **Optimized Data Types:** Avro's encoding can be highly optimized for the underlying type system, sometimes utilizing techniques—like reading structured data in a nearly columnar fashion—that achieve greater compression than MsgPack's general-purpose serialization.
+    * Minimal Redundancy: If you are writing 1,000 records, MsgPack effectively encodes "field\_a: type\_X" 1,000 times (even if implicitly). Avro, because it relies on the external schema, only has to encode the structural information once, allowing the data section to be much more dense and optimized.
+    * Optimized Data Types: Avro's encoding can be highly optimized for the underlying type system, sometimes utilizing techniques—like reading structured data in a nearly columnar fashion—that achieve greater compression than MsgPack's general-purpose serialization.
 
     ---
 
@@ -659,13 +673,14 @@ def _(mo):
         Use Gzip if: You are sending data over the public internet to a browser, or
         working with legacy systems that don't support modern libraries.
 
-    Pro Tip: If you're using Zstd, try the "dictionary compression" feature. It’s a
-    game-changer for compressing very small, repetitive chunks of data (like JSON
+    If you're using Zstd, there is a "dictionary compression" feature. It works to even be more effective at compressing very small, repetitive chunks of data (like JSON
     logs) by pre-training the algorithm on what your data looks like.
 
-    When working with **PySpark**, the conversation changes from just "file size" to
-    **"distributed efficiency."** In a big data environment, the most important
-    factor is often whether a file is **splittable**.
+    WHOSE PAYING ATTENTION AND WANTS TO TRY DOING THAT AGAINST one of our generated files.
+
+    When working with PySpark, the conversation changes from just "file size" to
+    "distributed efficiency." In a big data environment, the most important
+    factor is often whether a file is _splittable_.
 
     If a file is not splittable (like a standard Gzip-compressed CSV), Spark can
     only use **one CPU core** to read that entire file, even if you have a cluster
@@ -706,7 +721,8 @@ def _(mo):
     ```
 
     ### Dealing with "The Gzip Trap"
-    If you receive a massive `10GB.csv.gz` file, PySpark will process it using only **one task**. To fix this, you should read it once, and immediately write it back out as **Snappy-compressed Parquet**. This "re-hydrates" the data so future jobs can process it in parallel.
+
+    If you receive a massive `10GB.csv.gz` file, PySpark will process it using only **one task**. To work around this, you might want to read it once, and immediately write it back out as **Snappy-compressed Parquet**. This changes the format of the the data so future jobs can process it in parallel.
 
     ```python
     # Step 1: Read the slow, non-splittable Gzip file
